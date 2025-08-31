@@ -180,4 +180,4 @@ async def root():
 if __name__ == "__main__":
     import asyncio
     print("🌑 THE ORB v8.3 — NO LOGIN, NO CRASH, FULL POWER")
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    
