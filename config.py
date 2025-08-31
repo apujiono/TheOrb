@@ -17,9 +17,3 @@ def decrypt_data(token: str, agent_id: str) -> str:
         return f.decrypt(token.encode()).decode()
     except:
         return None
-
-# Randomize function names
-def random_name():
-    import random
-    chars = "abcdefghijklmnopqrstuvwxyz"
-    return ''.join(random.choices(chars, k=8))
