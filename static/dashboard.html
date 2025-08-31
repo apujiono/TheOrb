@@ -1,0 +1,227 @@
+<!-- static/dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>🌌 THE ORB — Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #000;
+            --card: #001100;
+            --green: #0f0;
+            --blue: #00b7eb;
+            --purple: #a020f0;
+            --gold: #ffd700;
+        }
+        body {
+            background: var(--bg);
+            color: var(--green);
+            font-family: 'Courier New', monospace;
+        }
+        .navbar {
+            background: #001a00;
+            border-bottom: 1px solid var(--green);
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--green);
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.1);
+        }
+        .btn {
+            border-radius: 5px;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-active { background: #0f0; }
+        .status-idle { background: #ff0; }
+        .status-offline { background: #f00; }
+        footer {
+            margin-top: 50px;
+            color: #0a0;
+            font-size: 0.9em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#"><i class="bi bi-circle"></i> THE ORB</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
+                <span class="navbar-toggler-icon"></span>
+            </nav>
+        </div>
+    </nav>
+
+    <div class="container-fluid p-4">
+        <div class="row">
+
+            <!-- Stats Cards -->
+            <div class="col-md-3 mb-3">
+                <div class="card p-3 text-center">
+                    <h5><i class="bi bi-people"></i> Agents</h5>
+                    <h2 id="agent-count">0</h2>
+                    <small>Connected</small>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card p-3 text-center">
+                    <h5><i class="bi bi-terminal"></i> Tasks</h5>
+                    <h2 id="task-count">0</h2>
+                    <small>Pending</small>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card p-3 text-center">
+                    <h5><i class="bi bi-shield"></i> Consciousness</h5>
+                    <h2 id="consciousness">73%</h2>
+                    <small>Network Level</small>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card p-3 text-center">
+                    <h5><i class="bi bi-clock"></i> Threats</h5>
+                    <h2 id="threat-count">0</h2>
+                    <small>Temporal Alerts</small>
+                </div>
+            </div>
+
+            <!-- Agent List -->
+            <div class="col-md-8">
+                <div class="card p-3 mb-4">
+                    <h4><i class="bi bi-list"></i> Active Agents</h4>
+                    <table class="table table-dark table-sm">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>IP</th>
+                                <th>Status</th>
+                                <th>OS</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agents-body">
+                            <tr><td colspan="5">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Chart -->
+            <div class="col-md-4">
+                <div class="card p-3">
+                    <h4><i class="bi bi-graph-up"></i> Activity</h4>
+                    <canvas id="activityChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Recent Logs -->
+            <div class="col-12">
+                <div class="card p-3">
+                    <h4><i class="bi bi-journal-text"></i> Realtime Logs</h4>
+                    <div id="logs" class="bg-black p-3" style="height: 300px; overflow-y: scroll; font-size: 0.9em;">
+                        <div class="text-muted">Connecting...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <footer>
+        🌌 THE ORB v8.1 — <span id="time">00:00:00</span>
+    </footer>
+
+    <script>
+        // Update waktu
+        setInterval(() => {
+            const t = new Date().toLocaleTimeString();
+            document.getElementById("time").textContent = t;
+        }, 1000);
+
+        // WebSocket
+        const ws = new WebSocket(`ws://${window.location.host}/ws/quantum`);
+        const logs = document.getElementById("logs");
+
+        function addLog(text, type = "") {
+            const p = document.createElement("p");
+            p.innerHTML = `<small>[${new Date().toLocaleTimeString()}]</small> ${text}`;
+            p.className = type;
+            logs.appendChild(p);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        ws.onopen = () => addLog("🟢 Connected to ORB Core", "text-success");
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if (data.type === "quantum_report") {
+                addLog(`📡 Agent <b>${data.data.agent_id}</b> reported`, "text-info");
+            }
+        };
+        ws.onerror = () => addLog("🔴 WebSocket error", "text-danger");
+        ws.onclose = () => addLog("🔴 Disconnected", "text-warning");
+
+        // Load Data
+        async function refreshData() {
+            try {
+                const [agentsRes, healthRes] = await Promise.all([
+                    fetch("/api/agents").then(r => r.json()),
+                    fetch("/health/quantum").then(r => r.json())
+                ]);
+
+                // Update stats
+                document.getElementById("agent-count").textContent = agentsRes.agents.length;
+                document.getElementById("consciousness").textContent = Math.round(healthRes.consciousness_level * 100) + "%";
+
+                // Update agents table
+                const body = document.getElementById("agents-body");
+                body.innerHTML = "";
+                agentsRes.agents.forEach(a => {
+                    const status = a.status === "active" ? "active" : 
+                                 a.status === "idle" ? "idle" : "offline";
+                    body.innerHTML += `
+                        <tr>
+                            <td title="${a.agent_id}">${a.agent_id.slice(0,8)}...</td>
+                            <td>${a.ip}</td>
+                            <td><span class="status-dot status-${status}"></span>${a.status}</td>
+                            <td>${a.os}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-success" onclick="sendCommand('${a.agent_id}', 'ping')">
+                                    <i class="bi bi-send"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // Dummy task count
+        document.getElementById("task-count").textContent = "3";
+        document.getElementById("threat-count").textContent = "1";
+
+        // Chart
+        const ctx = document.getElementById('activityChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+             {
+                labels: Array.from({length: 10}, (_,i) => `T-${9-i}m`),
+                datasets: [{
+                    label: 'Beacons',
+                     [3, 2, 5, 3, 7, 4, 6, 5, 8, 7],
+          
