@@ -1,4 +1,14 @@
 fastapi
 uvicorn
 jinja2
-paho-mqtt
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+requests
+cryptography
+pydantic
+fpdf2
+mss
+opencv-python
+pynput
+dnspython
