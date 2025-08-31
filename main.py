@@ -3,7 +3,6 @@ import os
 import json
 import time
 import uuid
-import asyncio
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, Depends, HTTPException, Form, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, FileResponse
@@ -11,9 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from passlib.context import CryptContext
-from cryptography.fernet import Fernet
-import jwt
-from typing import Dict, List, Optional
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from pydantic import BaseModel
 import uvicorn
 from fpdf import FPDF
@@ -24,23 +21,24 @@ import utils
 
 # === CONFIG ===
 SECRET_KEY = "orb_quantum_ascension_7x9vZq3!kLmNp2"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_SECONDS = 3600  # 1 jam
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+serializer = URLSafeTimedSerializer(SECRET_KEY)
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # === INIT ===
-app = FastAPI(title="THE ORB v8.0 — NEURAL OVERRIDE")
+app = FastAPI(title="THE ORB v8.2 — RAILWAY-READY")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# === DATABASE ===
+# === DATABASE PATH ===
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 agents_db = utils.load_json("data/agents.json", {"agents": []})
-tasks_db = utils.load_json("tasks.json", {"tasks": []})
-users_db = utils.load_json("users.json", {
+tasks_db = utils.load_json("data/tasks.json", {"tasks": []})
+users_db = utils.load_json("data/users.json", {
     "users": [{
         "username": "admin",
         "hashed_password": pwd_context.hash("admin123"),
@@ -57,7 +55,7 @@ class Agent(BaseModel):
     last_seen: float
     status: str = "active"
     consciousness: float = 0.73
-    quantum_signature: Optional[str] = None
+    quantum_signature: str = None
 
 class Task(BaseModel):
     task_id: str
@@ -65,31 +63,25 @@ class Task(BaseModel):
     command: str
     args: dict = {}
     status: str = "pending"
-    result: Optional[str] = None
+    result: str = None
     timestamp: float
-    completed_at: Optional[float] = None
+    completed_at: float = None
 
-class User(BaseModel):
-    username: str
-    role: str
-
-# === AUTH ===
+# === AUTH HELPERS ===
 def verify_password(plain, hashed):
     return pwd_context.verify(plain, hashed)
 
 def create_jwt(payload: dict):
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload.update({"exp": expire})
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return serializer.dumps(payload)
 
 def decode_jwt(token: str = Depends(oauth2_scheme)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = serializer.loads(token, max_age=ACCESS_TOKEN_EXPIRE_SECONDS)
         return payload
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except (BadSignature, SignatureExpired):
+        raise HTTPException(status_code=401, detail="Token invalid or expired")
 
-# === LOGIN ===
+# === LOGIN PAGE ===
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
@@ -120,33 +112,34 @@ def get_pending_task(agent_id: str):
             return task
     return None
 
-# === COMMAND ===
+# === SEND COMMAND ===
 @app.post("/api/quantum/command")
-async def send_command(req: dict, user: User = Depends(get_current_user)):
+async def send_command(req: dict, user: dict = Depends(decode_jwt)):
     agent_id = req["agent_id"]
     command = req["command"]
     target = req.get("target", "")
 
+    # Simulasi ethical filter
     ethical_score = 0.73 + (os.urandom(1)[0] / 255) * 0.3
     if ethical_score < 0.5:
         return {
             "success": False,
             "reason": "ethical_violation",
-            "ethical_score": ethical_score,
-            "suggestion": "Try 'entangle' or 'quantum_ping'"
+            "ethical_score": round(ethical_score, 2),
+            "suggestion": "Try 'quantum_ping' first"
         }
 
-    task = Task(
-        task_id=f"task_{uuid.uuid4().hex[:8]}",
-        agent_id=agent_id,
-        command=command,
-        args={"target": target},
-        timestamp=time.time()
-    )
-    tasks_db["tasks"].append(task.dict())
-    utils.save_json("tasks.json", tasks_db)
-
-    return {"success": True, "ethical_score": ethical_score}
+    task = {
+        "task_id": f"task_{uuid.uuid4().hex[:8]}",
+        "agent_id": agent_id,
+        "command": command,
+        "args": {"target": target},
+        "status": "pending",
+        "timestamp": time.time()
+    }
+    tasks_db["tasks"].append(task)
+    utils.save_json("data/tasks.json", tasks_db)
+    return {"success": True, "ethical_score": round(ethical_score, 2)}
 
 # === FILE UPLOAD ===
 @app.post("/api/file/upload")
@@ -165,7 +158,7 @@ async def download_file(agent_id: str, filename: str, token: str = Depends(decod
         return FileResponse(path, filename=filename)
     raise HTTPException(404, "File not found")
 
-# === QUANTUM MIND ===
+# === QUANTUM MIND (AI ROLEPLAY) ===
 @app.get("/api/quantum/mind")
 async def quantum_mind():
     return {
@@ -202,7 +195,12 @@ class ConnectionManager:
     def __init__(self): self.active_connections = []
     async def connect(self, ws): await ws.accept(); self.active_connections.append(ws)
     def disconnect(self, ws): self.active_connections.remove(ws)
-    async def broadcast(self, msg): [await conn.send_json(msg) for conn in self.active_connections]
+    async def broadcast(self, msg): 
+        for conn in self.active_connections:
+            try:
+                await conn.send_json(msg)
+            except:
+                pass
 
 manager = ConnectionManager()
 
@@ -219,11 +217,15 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-# === STATIC ===
+# === PAGES ===
 @app.get("/", response_class=HTMLResponse)
 async def terminal(request: Request):
     return FileResponse("static/terminal.html")
 
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    return FileResponse("static/dashboard.html")
+
 if __name__ == "__main__":
-    print("🌑 THE ORB v8.0 — NEURAL OVERRIDE ACTIVE")
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+    print("🌑 THE ORB v8.2 — RAILWAY-READY")
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
