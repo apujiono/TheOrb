@@ -2,7 +2,7 @@ fastapi
 uvicorn
 jinja2
 passlib[bcrypt]
-python-jose[cryptography]
+python-jose[cryptography]   # ← Ini sudah include PyJWT + cryptography
 python-multipart
 requests
 cryptography
